@@ -4,7 +4,28 @@
   <img src="assets/hero.png" alt="docker_mlx_cpp — Metal GPU for Docker" width="100%">
 </p>
 
-Give **any Docker container** full access to your Apple Silicon GPU. Not just inference — training, image generation, audio, embeddings, everything. No CUDA needed. Just Metal.
+<h3 align="center">The NVIDIA Container Toolkit — for Mac</h3>
+
+<p align="center">
+  <strong>Give any Docker container full Apple Silicon Metal GPU access.</strong><br>
+  100+ GPU operations • LLM inference • Training • Image gen • Audio • Embeddings<br>
+  Zero CUDA. Zero NVIDIA. Just Metal.
+</p>
+
+<p align="center">
+  <a href="#quick-start"><img src="https://img.shields.io/badge/quick_start-5_min-brightgreen" alt="Quick Start"></a>
+  <a href="https://github.com/RobotFlow-Labs/docker_mlx_cpp/releases"><img src="https://img.shields.io/badge/version-0.1.0-blue" alt="Version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
+  <a href="https://github.com/RobotFlow-Labs/docker_mlx_cpp"><img src="https://img.shields.io/github/stars/RobotFlow-Labs/docker_mlx_cpp?style=social" alt="Stars"></a>
+</p>
+
+## One-Line Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/RobotFlow-Labs/docker_mlx_cpp/main/install.sh | bash
+```
+
+This installs everything: MLX, all GPU engines, the daemon, the Docker gateway. One command.
 
 ```
 ┌──────────────────────────────────────────────────────┐
