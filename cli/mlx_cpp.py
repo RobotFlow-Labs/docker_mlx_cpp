@@ -343,6 +343,158 @@ def train_jobs():
     console.print(table)
 
 
+# ── Docker Init (scaffold a GPU-enabled project) ────────────────────────────
+
+@cli.group()
+def docker():
+    """Docker container scaffolding commands."""
+    pass
+
+
+@docker.command("init")
+@click.argument("name")
+def docker_init(name: str):
+    """Scaffold a new GPU-enabled Docker project.
+
+    Creates a ready-to-run project with Dockerfile, docker-compose.yml,
+    and a Python app that uses Metal GPU from inside a container.
+    """
+    from pathlib import Path
+
+    project_dir = Path(name)
+    if project_dir.exists():
+        console.print(f"[red]Error:[/red] Directory '{name}' already exists")
+        return
+
+    project_dir.mkdir(parents=True)
+
+    # Dockerfile
+    (project_dir / "Dockerfile").write_text(f"""FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir httpx openai rich
+
+COPY . .
+
+ENV MLX_URL=http://mlx-gateway:8080
+ENV OPENAI_BASE_URL=http://mlx-gateway:8080/v1
+ENV OPENAI_API_KEY=not-needed
+
+CMD ["python", "app.py"]
+""")
+
+    # docker-compose.yml
+    (project_dir / "docker-compose.yml").write_text(f"""# {name} — GPU-enabled Docker project (powered by docker_mlx_cpp)
+#
+# Prerequisites:
+#   1. mlx-cpp serve (start Metal GPU daemon)
+#   2. docker_mlx_cpp gateway running on mlx-network
+#
+# Usage:
+#   docker compose up
+
+services:
+  {name}:
+    build: .
+    environment:
+      - MLX_URL=http://mlx-gateway:8080
+      - OPENAI_BASE_URL=http://mlx-gateway:8080/v1
+      - OPENAI_API_KEY=not-needed
+    networks:
+      - mlx-network
+
+networks:
+  mlx-network:
+    external: true
+""")
+
+    # app.py
+    (project_dir / "app.py").write_text(f"""\"\"\"
+{name} — GPU-accelerated app running inside Docker on Apple Silicon Metal.
+
+This container uses the Metal GPU via docker_mlx_cpp.
+\"\"\"
+
+import os
+import httpx
+
+MLX_URL = os.environ.get("MLX_URL", "http://mlx-gateway:8080")
+
+
+def main():
+    print(f"[{name}] Connecting to Metal GPU via {{MLX_URL}}")
+    print()
+
+    # Check GPU
+    gpu = httpx.get(f"{{MLX_URL}}/compute/devices").json()
+    print(f"  Metal GPU: {{gpu.get('default_device', 'N/A')}}")
+    print(f"  Memory: {{gpu.get('active_memory_gb', '?')}} GB active")
+    print()
+
+    # Run a GPU operation
+    result = httpx.post(f"{{MLX_URL}}/compute/eval", json={{
+        "op": "matmul",
+        "args": {{"a": {{"shape": [512, 512]}}, "b": {{"shape": [512, 512]}}}}
+    }}).json()
+    print(f"  Matmul 512x512: {{result.get('elapsed_ms', '?')}}ms on {{result.get('device', '?')}}")
+    print()
+
+    # Run LLM inference
+    resp = httpx.post(f"{{MLX_URL}}/v1/chat/completions", json={{
+        "model": "chat-small",
+        "messages": [{{"role": "user", "content": "Hello from Docker!"}}],
+        "max_tokens": 64,
+    }}).json()
+
+    if "choices" in resp:
+        print(f"  LLM: {{resp['choices'][0]['message']['content']}}")
+    else:
+        print(f"  LLM: {{resp}}")
+
+    print()
+    print(f"[{name}] Metal GPU from Docker container — working!")
+
+
+if __name__ == "__main__":
+    main()
+""")
+
+    # README.md
+    (project_dir / "README.md").write_text(f"""# {name}
+
+GPU-accelerated Docker app powered by [docker_mlx_cpp](https://github.com/RobotFlow-Labs/docker_mlx_cpp).
+
+## Run
+
+```bash
+# 1. Ensure docker_mlx_cpp is running
+mlx-cpp serve                    # Terminal 1
+cd ~/.docker-mlx/repo && docker compose up -d  # Terminal 2
+
+# 2. Run this app
+docker compose up
+```
+
+## What this does
+
+This container runs inside Docker but uses your Mac's Metal GPU for:
+- LLM inference (50+ model architectures)
+- Raw GPU compute (matmul, softmax, FFT, etc.)
+- And everything else docker_mlx_cpp supports
+""")
+
+    console.print(f"[green]Created project:[/green] {name}/")
+    console.print(f"  {name}/Dockerfile")
+    console.print(f"  {name}/docker-compose.yml")
+    console.print(f"  {name}/app.py")
+    console.print(f"  {name}/README.md")
+    console.print()
+    console.print(f"[bold]Next steps:[/bold]")
+    console.print(f"  cd {name}")
+    console.print(f"  docker compose up")
+
+
 # ── Entry point ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
