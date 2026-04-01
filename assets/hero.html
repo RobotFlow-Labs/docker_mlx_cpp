@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DOCKER_MLX_CPP // HERO</title>
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500;700&family=Chakra+Petch:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --rf-accent: #FF3B00;
+      --rf-accent-glow: rgba(255, 59, 0, 0.3);
+      --rf-accent-dim: rgba(255, 59, 0, 0.15);
+      --rf-bg: #050505;
+      --rf-bg-panel: #1A1A1A;
+      --rf-border: #333333;
+      --rf-text: #ffffff;
+      --rf-text-dim: #999999;
+      --rf-text-muted: #666666;
+      --rf-success: #00FF88;
+      --rf-warning: #FFB800;
+      --rf-restricted: #9B5EFF;
+      --rf-font-display: 'Oswald', sans-serif;
+      --rf-font-mono: 'JetBrains Mono', monospace;
+      --rf-font-tech: 'Chakra Petch', sans-serif;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--rf-font-mono);
+      background: var(--rf-bg);
+      color: var(--rf-text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    /* SCANLINE */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 9999;
+      background: repeating-linear-gradient(
+        to bottom, transparent, transparent 2px,
+        rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px
+      );
+    }
+
+    /* GRID BG */
+    .hero-wrap {
+      position: relative;
+      width: 1280px;
+      height: 640px;
+      background:
+        linear-gradient(rgba(255,59,0,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,59,0,0.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+      border: 1px solid var(--rf-border);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+    }
+
+    /* CORNER BRACKETS */
+    .hero-wrap::before,
+    .hero-wrap::after {
+      content: '';
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border-color: var(--rf-accent);
+      border-style: solid;
+    }
+    .hero-wrap::before {
+      top: 12px; left: 12px;
+      border-width: 2px 0 0 2px;
+    }
+    .hero-wrap::after {
+      bottom: 12px; right: 12px;
+      border-width: 0 2px 2px 0;
+    }
+
+    .corner-tr, .corner-bl {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border-color: var(--rf-accent);
+      border-style: solid;
+    }
+    .corner-tr { top: 12px; right: 12px; border-width: 2px 2px 0 0; }
+    .corner-bl { bottom: 12px; left: 12px; border-width: 0 0 2px 2px; }
+
+    /* GLOW LINE */
+    .glow-line {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--rf-accent), transparent);
+      animation: scan 3s ease-in-out infinite;
+    }
+    @keyframes scan {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 1; }
+    }
+
+    /* ARCHITECTURE DIAGRAM - subtle background element */
+    .arch-bg {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 900px;
+      height: 400px;
+      opacity: 0.04;
+      pointer-events: none;
+    }
+    .arch-bg .flow-line {
+      position: absolute;
+      background: var(--rf-accent);
+    }
+    .arch-bg .flow-v {
+      width: 2px;
+      height: 120px;
+      left: 50%;
+    }
+    .arch-bg .flow-v.top { top: 0; }
+    .arch-bg .flow-v.mid { top: 140px; }
+    .arch-bg .flow-v.bot { top: 280px; }
+    .arch-bg .flow-h {
+      height: 2px;
+      width: 300px;
+      top: 200px;
+      left: calc(50% - 150px);
+    }
+    .arch-bg .node {
+      position: absolute;
+      width: 120px;
+      height: 40px;
+      border: 2px solid var(--rf-accent);
+    }
+    .arch-bg .node-top { top: -20px; left: calc(50% - 60px); }
+    .arch-bg .node-mid { top: 120px; left: calc(50% - 60px); }
+    .arch-bg .node-bot { top: 260px; left: calc(50% - 60px); }
+
+    /* TAG */
+    .hero-tag {
+      font-family: var(--rf-font-mono);
+      font-size: 11px;
+      letter-spacing: 3px;
+      color: var(--rf-accent);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      padding: 4px 16px;
+      border: 1px solid var(--rf-accent);
+      background: rgba(255,59,0,0.08);
+    }
+
+    /* MODULE CODE */
+    .module-code {
+      font-family: var(--rf-font-mono);
+      font-size: 13px;
+      color: var(--rf-text-dim);
+      letter-spacing: 4px;
+      margin-bottom: 8px;
+    }
+
+    /* TITLE */
+    .hero-title {
+      font-family: var(--rf-font-display);
+      font-size: 72px;
+      font-weight: 900;
+      letter-spacing: -1px;
+      line-height: 1.0;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .hero-title .accent { color: var(--rf-accent); }
+
+    /* SUBTITLE */
+    .hero-subtitle {
+      font-family: var(--rf-font-tech);
+      font-size: 17px;
+      font-weight: 500;
+      color: var(--rf-text-dim);
+      letter-spacing: 3px;
+      margin-bottom: 24px;
+      text-transform: uppercase;
+    }
+
+    /* DESC */
+    .hero-desc {
+      font-size: 13px;
+      color: var(--rf-text-dim);
+      max-width: 720px;
+      text-align: center;
+      line-height: 1.8;
+      margin-bottom: 28px;
+    }
+    .hero-desc strong {
+      color: var(--rf-text);
+      font-weight: 500;
+    }
+
+    /* STATS ROW */
+    .stats-row {
+      display: flex;
+      gap: 32px;
+      margin-bottom: 28px;
+    }
+    .stat {
+      text-align: center;
+      padding: 12px 28px;
+      border: 1px solid var(--rf-border);
+      background: var(--rf-bg-panel);
+      min-width: 160px;
+    }
+    .stat-value {
+      font-family: var(--rf-font-display);
+      font-size: 36px;
+      font-weight: 700;
+      color: var(--rf-accent);
+    }
+    .stat-label {
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: var(--rf-text-dim);
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    /* TAGS */
+    .tag-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .tag {
+      font-size: 10px;
+      letter-spacing: 1px;
+      padding: 4px 12px;
+      border: 1px solid var(--rf-border);
+      color: var(--rf-text-dim);
+      text-transform: uppercase;
+    }
+    .tag.active { border-color: var(--rf-success); color: var(--rf-success); }
+
+    /* BOTTOM STATUS BAR */
+    .status-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 36px;
+      background: var(--rf-bg-panel);
+      border-top: 1px solid var(--rf-border);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 20px;
+      font-size: 10px;
+      color: var(--rf-text-dim);
+      letter-spacing: 1px;
+    }
+    .status-bar .dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+    .dot.green { background: var(--rf-success); box-shadow: 0 0 8px var(--rf-success); }
+    .dot.orange { background: #FFB800; box-shadow: 0 0 8px #FFB800; }
+
+    /* CREDITS */
+    .credits {
+      position: absolute;
+      top: 16px;
+      right: 60px;
+      font-size: 10px;
+      color: var(--rf-text-dim);
+      letter-spacing: 1px;
+      text-align: right;
+      line-height: 1.8;
+    }
+    .credits .val { color: var(--rf-accent); }
+
+    /* PILLAR TAG */
+    .pillar-tag {
+      position: absolute;
+      top: 16px;
+      left: 60px;
+      font-size: 10px;
+      color: var(--rf-accent);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+    }
+
+    /* FLOW DIAGRAM BETWEEN STATS */
+    .flow-indicator {
+      font-family: var(--rf-font-mono);
+      font-size: 11px;
+      color: var(--rf-text-muted);
+      letter-spacing: 2px;
+      margin-bottom: 6px;
+    }
+    .flow-indicator .arrow {
+      color: var(--rf-accent);
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="hero-wrap">
+    <div class="glow-line"></div>
+    <div class="corner-tr"></div>
+    <div class="corner-bl"></div>
+
+    <!-- Subtle architecture flow lines in background -->
+    <div class="arch-bg">
+      <div class="flow-line flow-v top"></div>
+      <div class="flow-line flow-v mid"></div>
+      <div class="flow-line flow-v bot"></div>
+      <div class="flow-line flow-h"></div>
+      <div class="node node-top"></div>
+      <div class="node node-mid"></div>
+      <div class="node node-bot"></div>
+    </div>
+
+    <div class="pillar-tag">PILLAR 01 &mdash; MLX INFRASTRUCTURE</div>
+
+    <div class="credits">
+      SYSTEM: <span class="val">ORIGINAL</span><br>
+      BUILT BY: <span class="val">ROBOTFLOW LABS</span>
+    </div>
+
+    <div class="hero-tag">GPU RUNTIME FOR MAC</div>
+    <div class="module-code">DOCKER_MLX_CPP</div>
+    <div class="hero-title">
+      <span class="accent">METAL GPU</span> FOR DOCKER
+    </div>
+    <div class="hero-subtitle">THE NVIDIA CONTAINER TOOLKIT &mdash; NATIVE TO APPLE SILICON</div>
+
+    <div class="flow-indicator">
+      CONTAINER <span class="arrow">&rarr;</span> GATEWAY <span class="arrow">&rarr;</span> MLX DAEMON <span class="arrow">&rarr;</span> METAL GPU
+    </div>
+
+    <p class="hero-desc">
+      Any Docker container gets <strong>full Apple Silicon GPU access</strong>. Not just inference &mdash;<br>
+      training, image generation, audio, embeddings. <strong>Zero NVIDIA. Zero CUDA. Just Metal.</strong>
+    </p>
+
+    <div class="stats-row">
+      <div class="stat">
+        <div class="stat-value">6</div>
+        <div class="stat-label">GPU COMPUTE ENGINES</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">50+</div>
+        <div class="stat-label">MODEL ARCHITECTURES</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">0</div>
+        <div class="stat-label">NVIDIA REQUIRED</div>
+      </div>
+    </div>
+
+    <div class="tag-row">
+      <span class="tag active">MLX</span>
+      <span class="tag active">DOCKER</span>
+      <span class="tag active">APPLE SILICON</span>
+      <span class="tag">METAL GPU</span>
+      <span class="tag">OPENAI API</span>
+      <span class="tag active">OPEN SOURCE</span>
+    </div>
+
+    <div class="status-bar">
+      <span><span class="dot green"></span>INFERENCE: OPERATIONAL</span>
+      <span><span class="dot green"></span>TRAINING: OPERATIONAL</span>
+      <span><span class="dot green"></span>IMAGE GEN: OPERATIONAL</span>
+      <span><span class="dot green"></span>AUDIO: OPERATIONAL</span>
+      <span><span class="dot green"></span>EMBEDDINGS: OPERATIONAL</span>
+      <span style="margin-left:auto; color:#666;">ROBOTFLOW LABS // 2026</span>
+    </div>
+  </div>
+</body>
+</html>

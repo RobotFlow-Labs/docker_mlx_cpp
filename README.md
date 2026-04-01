@@ -1,6 +1,8 @@
 # docker_mlx_cpp
 
-**The NVIDIA Container Toolkit — for Mac.**
+<p align="center">
+  <img src="assets/hero.png" alt="docker_mlx_cpp — Metal GPU for Docker" width="100%">
+</p>
 
 Give **any Docker container** full access to your Apple Silicon GPU. Not just inference — training, image generation, audio, embeddings, everything. No CUDA needed. Just Metal.
 
