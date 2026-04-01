@@ -1,0 +1,73 @@
+# Docker MLX C++ — Mac GPU Model Runner Platform
+# "NVIDIA containers" alternative for Apple Silicon
+#
+# Architecture:
+#   Host (Metal GPU) → Docker Model Runner → model-runner.docker.internal → containers
+#
+# Usage:
+#   docker compose up -d          # Start all services
+#   docker compose logs -f        # Watch logs
+#   docker compose down           # Stop everything
+
+services:
+  # ============================================================
+  # LLM Gateway — centralized proxy to Docker Model Runner
+  # Provides: stable DNS, logging, rate limiting, health checks
+  # ============================================================
+  llm-gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: mlx-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - DMR_UPSTREAM=http://model-runner.docker.internal
+      - GATEWAY_PORT=8080
+      - LOG_LEVEL=info
+      - RATE_LIMIT_RPM=60
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - mlx-net
+
+  # ============================================================
+  # Example: Python app consuming GPU inference via the gateway
+  # ============================================================
+  example-app:
+    build:
+      context: ./examples/python-client
+      dockerfile: Dockerfile
+    container_name: mlx-example-app
+    environment:
+      - OPENAI_BASE_URL=http://llm-gateway:8080/v1
+      - OPENAI_API_KEY=not-needed
+      - OPENAI_MODEL=ai/smollm2:360M-Q4_K_M
+    depends_on:
+      llm-gateway:
+        condition: service_healthy
+    networks:
+      - mlx-net
+    profiles:
+      - examples
+
+  # ============================================================
+  # Example: Generic curl test container
+  # ============================================================
+  curl-test:
+    image: curlimages/curl:8.5.0
+    container_name: mlx-curl-test
+    entrypoint: ["sh", "-c", "while true; do sleep 3600; done"]
+    networks:
+      - mlx-net
+    profiles:
+      - test
+
+networks:
+  mlx-net:
+    driver: bridge
+    name: mlx-network
