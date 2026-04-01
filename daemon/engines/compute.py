@@ -74,7 +74,7 @@ def _result(op: str, result: mx.array, start: float, extra: dict | None = None) 
         "output_dtype": str(result.dtype),
         "elapsed_ms": round(elapsed * 1000, 3),
         "device": str(mx.default_device()),
-        "active_memory_gb": round(mx.metal.get_active_memory() / 1e9, 3),
+        "active_memory_gb": round(mx.get_active_memory() / 1e9, 3),
     }
     if extra:
         out.update(extra)
@@ -91,20 +91,20 @@ def get_device_info() -> dict:
     return {
         "default_device": str(mx.default_device()),
         "metal_available": True,
-        "active_memory_bytes": mx.metal.get_active_memory(),
-        "peak_memory_bytes": mx.metal.get_peak_memory(),
-        "cache_memory_bytes": mx.metal.get_cache_memory(),
-        "active_memory_gb": round(mx.metal.get_active_memory() / 1e9, 3),
-        "peak_memory_gb": round(mx.metal.get_peak_memory() / 1e9, 3),
-        "cache_memory_gb": round(mx.metal.get_cache_memory() / 1e9, 3),
+        "active_memory_bytes": mx.get_active_memory(),
+        "peak_memory_bytes": mx.get_peak_memory(),
+        "cache_memory_bytes": mx.get_cache_memory(),
+        "active_memory_gb": round(mx.get_active_memory() / 1e9, 3),
+        "peak_memory_gb": round(mx.get_peak_memory() / 1e9, 3),
+        "cache_memory_gb": round(mx.get_cache_memory() / 1e9, 3),
     }
 
 
 def clear_cache() -> dict:
     """Clear MLX Metal memory cache."""
-    before = mx.metal.get_cache_memory()
-    mx.metal.clear_cache()
-    after = mx.metal.get_cache_memory()
+    before = mx.get_cache_memory()
+    mx.clear_cache()
+    after = mx.get_cache_memory()
     return {
         "cleared_bytes": before - after,
         "cleared_mb": round((before - after) / 1e6, 1),
@@ -171,7 +171,10 @@ def eval_operation(op: str, args: dict) -> dict:
 
         elif op in ("abs", "neg", "exp", "log", "sqrt", "square", "reciprocal", "sin", "cos", "floor", "ceil"):
             x = _make_tensor(args.get("x", {"shape": [1024, 1024]}))
-            fn = getattr(mx, op)
+            # Handle name differences
+            name_map = {"neg": "negative"}
+            fn_name = name_map.get(op, op)
+            fn = getattr(mx, fn_name)
             return _result(op, fn(x), start)
 
         # ── Linear Algebra ───────────────────────────────────────────────
@@ -197,29 +200,31 @@ def eval_operation(op: str, args: dict) -> dict:
 
         elif op == "svd":
             x = _make_tensor(args.get("x", {"shape": [256, 256]}))
-            U, S, Vt = mx.linalg.svd(x, stream=mx.gpu)
+            U, S, Vt = mx.linalg.svd(x, stream=mx.cpu)  # linalg ops run on CPU
             mx.eval(U, S, Vt)
             elapsed = time.monotonic() - start
-            return {"op": op, "U_shape": list(U.shape), "S_shape": list(S.shape), "Vt_shape": list(Vt.shape), "elapsed_ms": round(elapsed * 1000, 3)}
+            return {"op": op, "U_shape": list(U.shape), "S_shape": list(S.shape), "Vt_shape": list(Vt.shape), "elapsed_ms": round(elapsed * 1000, 3), "note": "runs on CPU (MLX linalg constraint)"}
 
         elif op == "qr":
             x = _make_tensor(args.get("x", {"shape": [256, 256]}))
-            Q, R = mx.linalg.qr(x, stream=mx.gpu)
+            Q, R = mx.linalg.qr(x, stream=mx.cpu)
             mx.eval(Q, R)
             elapsed = time.monotonic() - start
-            return {"op": op, "Q_shape": list(Q.shape), "R_shape": list(R.shape), "elapsed_ms": round(elapsed * 1000, 3)}
+            return {"op": op, "Q_shape": list(Q.shape), "R_shape": list(R.shape), "elapsed_ms": round(elapsed * 1000, 3), "note": "runs on CPU (MLX linalg constraint)"}
 
         elif op == "cholesky":
             n = args.get("size", 256)
             x = mx.random.normal([n, n])
             x = mx.matmul(x, x.T) + n * mx.eye(n)  # positive definite
-            return _result(op, mx.linalg.cholesky(x), start)
+            mx.eval(x)
+            return _result(op, mx.linalg.cholesky(x, stream=mx.cpu), start, {"note": "runs on CPU"})
 
         elif op == "inv":
             n = args.get("size", 256)
             x = mx.random.normal([n, n])
             x = x + n * mx.eye(n)  # invertible
-            return _result(op, mx.linalg.inv(x), start)
+            mx.eval(x)
+            return _result(op, mx.linalg.inv(x, stream=mx.cpu), start, {"note": "runs on CPU"})
 
         elif op == "trace":
             x = _make_tensor(args.get("x", {"shape": [512, 512]}))
@@ -319,8 +324,9 @@ def eval_operation(op: str, args: dict) -> dict:
 
         elif op == "flip":
             x = _make_tensor(args.get("x", {"shape": [256, 256]}))
-            axis = args.get("axis", 0)
-            return _result(op, mx.flip(x, axis=axis), start)
+            # mx.flip doesn't exist — use slice reversal
+            result = x[::-1] if len(x.shape) == 1 else x[::-1, :]
+            return _result(op, result, start)
 
         elif op == "roll":
             x = _make_tensor(args.get("x", {"shape": [256, 256]}))
@@ -332,12 +338,14 @@ def eval_operation(op: str, args: dict) -> dict:
         elif op in ("relu", "gelu", "silu", "sigmoid", "tanh", "softplus", "mish", "celu", "hard_swish", "log_softmax"):
             import mlx.nn as nn
             x = _make_tensor(args.get("x", {"shape": [1024, 1024]}))
-            fn_map = {
-                "relu": nn.relu, "gelu": nn.gelu, "silu": nn.silu,
-                "sigmoid": mx.sigmoid, "tanh": mx.tanh,
-                "softplus": nn.softplus, "mish": nn.mish, "celu": nn.celu,
-                "hard_swish": nn.hard_swish, "log_softmax": nn.log_softmax,
-            }
+            # Build fn_map dynamically — skip ops not in this MLX version
+            fn_map = {"sigmoid": mx.sigmoid, "tanh": mx.tanh}
+            for name in ("relu", "gelu", "silu", "softplus", "mish", "celu", "hard_swish", "log_softmax"):
+                fn = getattr(nn, name, None)
+                if fn is not None:
+                    fn_map[name] = fn
+            if op not in fn_map:
+                return {"error": f"Activation '{op}' not available in this MLX version ({mx.__version__})", "op": op}
             return _result(op, fn_map[op](x), start)
 
         elif op == "softmax":
@@ -488,9 +496,9 @@ def eval_operation(op: str, args: dict) -> dict:
 
         elif op == "truncated_normal":
             shape = args.get("shape", [1024, 1024])
-            low = args.get("low", -2.0)
-            high = args.get("high", 2.0)
-            return _result(op, mx.random.truncated_normal(low=low, high=high, shape=shape), start)
+            lower = args.get("lower", args.get("low", -2.0))
+            upper = args.get("upper", args.get("high", 2.0))
+            return _result(op, mx.random.truncated_normal(lower=lower, upper=upper, shape=shape), start)
 
         # ── FFT ──────────────────────────────────────────────────────────
         elif op == "fft":
@@ -550,9 +558,10 @@ def eval_operation(op: str, args: dict) -> dict:
             return _result(op, fn(a, b), start)
 
         elif op == "where":
-            cond = mx.random.bernoulli(shape=args.get("shape", [1024, 1024]))
-            a = _make_tensor(args.get("a", {"shape": [1024, 1024]}))
-            b = _make_tensor(args.get("b", {"shape": [1024, 1024]}))
+            shape = args.get("shape", [1024, 1024])
+            cond = mx.random.bernoulli(shape=shape)
+            a = _make_tensor(args.get("a", {"shape": shape}))
+            b = _make_tensor(args.get("b", {"shape": shape}))
             return _result(op, mx.where(cond, a, b), start)
 
         elif op == "clip":
@@ -577,11 +586,11 @@ def eval_operation(op: str, args: dict) -> dict:
         elif op == "set_memory_limit":
             limit_gb = args.get("limit_gb", 0)
             if limit_gb > 0:
-                mx.metal.set_memory_limit(int(limit_gb * 1e9))
+                mx.set_memory_limit(int(limit_gb * 1e9))
             return {"memory_limit_gb": limit_gb, "status": "set"}
 
         elif op == "reset_peak_memory":
-            mx.metal.reset_peak_memory()
+            mx.reset_peak_memory()
             return {"status": "peak_memory_reset"}
 
         # ── Benchmarks ───────────────────────────────────────────────────
