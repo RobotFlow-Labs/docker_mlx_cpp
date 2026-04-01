@@ -129,12 +129,12 @@ async def health(request: Request):
     except httpx.ConnectError:
         result["mlx_daemon"] = {"status": "unreachable"}
 
-    # Check DMR
+    # Check DMR (short timeout — DMR is optional)
     try:
-        resp = await request.app.state.dmr_client.get("/engines/v1/models")
+        resp = await request.app.state.dmr_client.get("/engines/v1/models", timeout=3.0)
         result["dmr"] = {"status": "healthy", "code": resp.status_code}
-    except httpx.ConnectError:
-        result["dmr"] = {"status": "unreachable"}
+    except (httpx.ConnectError, httpx.ReadTimeout, httpx.ConnectTimeout, Exception):
+        result["dmr"] = {"status": "not_running", "note": "optional"}
 
     # Overall status
     if result.get("mlx_daemon", {}).get("status") == "unreachable":
