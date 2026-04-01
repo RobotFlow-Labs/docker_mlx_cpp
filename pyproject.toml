@@ -25,6 +25,7 @@ classifiers = [
 ]
 
 dependencies = [
+    # Server
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
     "httpx>=0.28",
@@ -32,25 +33,17 @@ dependencies = [
     "rich>=13.0",
     "pyyaml>=6.0",
     "huggingface-hub>=0.27",
+    "numpy>=1.26",
+    # MLX core — ALL engines use Metal GPU backend
+    "mlx>=0.22",
+    "mlx-lm>=0.21",
+    "mlx-vlm>=0.1.15",
+    "mlx-audio>=0.4.1",
+    "mlx-embeddings>=0.2",
+    "mflux>=0.9",
 ]
 
 [project.optional-dependencies]
-mlx = [
-    "mlx>=0.22",
-    "mlx-lm>=0.21",
-]
-vlm = [
-    "mlx-vlm>=0.1.15",
-]
-audio = [
-    "mlx-audio>=0.4.1",
-]
-embeddings = [
-    "mlx-embeddings>=0.2",
-]
-all = [
-    "docker-mlx-cpp[mlx,vlm,audio,embeddings]",
-]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",

@@ -185,7 +185,7 @@ async def audio_transcriptions(request: Request):
     # Handle multipart form data (file upload)
     form = await request.form()
     audio_file = form.get("file")
-    model = form.get("model", "mlx-community/whisper-large-v3-turbo")
+    model = form.get("model", "mlx-community/whisper-large-v3-turbo-asr-fp16")
 
     if not audio_file:
         return JSONResponse(status_code=400, content={"error": "file field required"})
@@ -253,6 +253,134 @@ async def list_training_jobs():
     from daemon.engines.training import list_jobs
 
     return {"jobs": list_jobs()}
+
+
+# ── Direct MLX GPU Compute ───────────────────────────────────────────────────
+
+@app.get("/compute/devices")
+async def compute_devices():
+    """Get MLX Metal GPU device info and memory stats."""
+    from daemon.engines.compute import get_device_info
+    return get_device_info()
+
+
+@app.post("/compute/eval")
+async def compute_eval(request: Request):
+    """Execute an MLX GPU operation (matmul, softmax, sort, etc.)."""
+    from daemon.engines.compute import eval_operation
+
+    body = await request.json()
+    op = body.get("op", "")
+    args = body.get("args", {})
+
+    if not op:
+        return JSONResponse(status_code=400, content={"error": "op field required"})
+    return eval_operation(op, args)
+
+
+@app.post("/compute/benchmark")
+async def compute_benchmark(request: Request):
+    """Benchmark raw Metal GPU compute throughput."""
+    from daemon.engines.compute import eval_operation
+
+    body = await request.json()
+    size = body.get("size", 1024)
+    ops = body.get("ops", 100)
+    return eval_operation("benchmark", {"size": size, "ops": ops})
+
+
+@app.post("/compute/clear-cache")
+async def compute_clear_cache():
+    """Clear MLX Metal memory cache."""
+    from daemon.engines.compute import clear_cache
+    return clear_cache()
+
+
+# ── File Upload (for training data, images, audio) ──────────────────────────
+
+@app.post("/files/upload")
+async def upload_file(request: Request):
+    """Upload a file from a container to the host for training/processing."""
+    import uuid as _uuid
+    from pathlib import Path
+
+    uploads_dir = Path.home() / ".docker-mlx" / "uploads"
+
+    form = await request.form()
+    file = form.get("file")
+    purpose = form.get("purpose", "general")
+
+    if not file:
+        return JSONResponse(status_code=400, content={"error": "file field required"})
+
+    file_id = f"file-{_uuid.uuid4().hex[:12]}"
+    dest_dir = uploads_dir / purpose / file_id
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / file.filename
+
+    content = await file.read()
+    dest.write_bytes(content)
+
+    return {"id": file_id, "filename": file.filename, "path": str(dest), "bytes": len(content), "purpose": purpose}
+
+
+@app.get("/files/list")
+async def list_files():
+    """List uploaded files."""
+    from pathlib import Path
+
+    uploads_dir = Path.home() / ".docker-mlx" / "uploads"
+    files = []
+    if uploads_dir.exists():
+        for purpose_dir in uploads_dir.iterdir():
+            if purpose_dir.is_dir():
+                for file_dir in purpose_dir.iterdir():
+                    if file_dir.is_dir():
+                        for f in file_dir.iterdir():
+                            files.append({
+                                "id": file_dir.name,
+                                "filename": f.name,
+                                "purpose": purpose_dir.name,
+                                "path": str(f),
+                                "bytes": f.stat().st_size,
+                            })
+    return {"files": files}
+
+
+# ── GPU Info ─────────────────────────────────────────────────────────────────
+
+@app.get("/gpu")
+async def gpu_info():
+    """Detailed GPU info — memory, device, loaded models."""
+    from daemon.engines.inference import list_loaded_models
+    from daemon.engines.compute import get_device_info
+
+    gpu = get_device_info()
+    gpu["loaded_models"] = list_loaded_models()
+    gpu["cached_models"] = len(model_manager.list_models())
+    return gpu
+
+
+# ── Engine Availability ─────────────────────────────────────────────────────
+
+@app.get("/engines")
+async def engine_status():
+    """Check which MLX engines are available (installed)."""
+    engines = {}
+    for name, module in [
+        ("inference", "mlx_lm"),
+        ("vlm", "mlx_vlm"),
+        ("audio", "mlx_audio"),
+        ("embeddings", "mlx_embeddings"),
+        ("image_gen", "mflux"),
+        ("compute", "mlx.core"),
+    ]:
+        try:
+            __import__(module)
+            engines[name] = {"status": "available", "module": module}
+        except ImportError:
+            engines[name] = {"status": "not_installed", "module": module}
+    return {"engines": engines}
 
 
 # ── Entry point ──────────────────────────────────────────────────────────────

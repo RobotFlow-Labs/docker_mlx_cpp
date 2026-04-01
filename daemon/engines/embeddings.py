@@ -2,16 +2,15 @@
 Embeddings Engine — MLX-powered text embeddings.
 
 OpenAI-compatible /v1/embeddings endpoint.
-Supports mlx-embeddings and Jina v5 MLX models.
+Uses mlx-embeddings with load() + generate() API.
 """
 
 import logging
 import time
-import uuid
 
 logger = logging.getLogger("mlx-daemon.embeddings")
 
-_loaded_models: dict[str, object] = {}
+_loaded_models: dict[str, tuple] = {}  # model_id -> (model, tokenizer)
 
 
 def generate_embeddings(model_id: str, input_text: str | list[str]) -> dict:
@@ -22,39 +21,20 @@ def generate_embeddings(model_id: str, input_text: str | list[str]) -> dict:
     start = time.monotonic()
 
     try:
-        # Try mlx-embeddings first
-        from mlx_embeddings import load as load_embedding_model
-        from mlx_embeddings import encode
+        from mlx_embeddings import load, generate
 
         if model_id not in _loaded_models:
             logger.info("Loading embedding model %s...", model_id)
-            _loaded_models[model_id] = load_embedding_model(model_id)
+            model, tokenizer = load(model_id)
+            _loaded_models[model_id] = (model, tokenizer)
 
-        model = _loaded_models[model_id]
-        vectors = encode(model, input_text)
-        embeddings_list = [v.tolist() for v in vectors]
+        model, tokenizer = _loaded_models[model_id]
+        output = generate(model, tokenizer, texts=input_text)
+        embeddings_list = [v.tolist() for v in output]
 
     except ImportError:
-        # Fallback: use sentence-transformers or basic MLX
-        logger.warning("mlx-embeddings not installed, using fallback")
-        try:
-            import mlx.core as mx
-            import mlx.nn as nn
-
-            # Simple hash-based embedding for fallback (not production quality)
-            embeddings_list = []
-            for text in input_text:
-                hash_val = hash(text)
-                # Generate deterministic pseudo-embedding
-                import numpy as np
-                rng = np.random.RandomState(abs(hash_val) % (2**31))
-                vec = rng.randn(1536).tolist()
-                # Normalize
-                norm = sum(x**2 for x in vec) ** 0.5
-                vec = [x / norm for x in vec]
-                embeddings_list.append(vec)
-        except ImportError:
-            return {"error": "No embedding backend available. Install mlx-embeddings."}
+        logger.error("mlx-embeddings not installed. pip install 'docker-mlx-cpp[embeddings]'")
+        return {"error": "mlx-embeddings not installed. Install with: pip install 'docker-mlx-cpp[embeddings]'"}
 
     elapsed = time.monotonic() - start
     logger.info("Embeddings: %d texts, %s, %.1fms", len(input_text), model_id, elapsed * 1000)

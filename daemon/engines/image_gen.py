@@ -1,10 +1,7 @@
 """
-Image Generation Engine — MLX-powered Stable Diffusion / FLUX.
+Image Generation Engine — MLX-native FLUX via mflux.
 
-Supports:
-    - Stable Diffusion 1.5 / SDXL
-    - FLUX (via mlx-community models)
-
+Uses mflux (pip install mflux) for FLUX image generation on Apple Silicon Metal.
 OpenAI-compatible /v1/images/generations endpoint.
 """
 
@@ -12,44 +9,41 @@ import base64
 import io
 import logging
 import time
-import uuid
 
 logger = logging.getLogger("mlx-daemon.image_gen")
 
 
 def generate_image(
     prompt: str,
-    model: str = "stable-diffusion",
+    model: str = "flux-schnell",
     size: str = "512x512",
     n: int = 1,
+    steps: int = 4,
+    seed: int | None = None,
 ) -> dict:
-    """Generate images from a text prompt using MLX."""
-    start = time.monotonic()
-
+    """Generate images from a text prompt using FLUX via mflux on Metal GPU."""
     try:
         width, height = _parse_size(size)
     except ValueError:
         return {"error": f"Invalid size: {size}. Use format WxH (e.g., 512x512)"}
 
     try:
-        # Try MLX stable diffusion
-        from stable_diffusion import StableDiffusion
-
-        sd = StableDiffusion()
+        from mflux import Flux1Schnell
 
         images_data = []
         for i in range(n):
-            logger.info("Generating image %d/%d: '%s' (%s)", i + 1, n, prompt[:50], size)
+            logger.info("Generating image %d/%d: '%s' (%dx%d)", i + 1, n, prompt[:50], width, height)
 
-            image = sd.generate(
-                prompt,
-                n_steps=20,
-                cfg_weight=7.5,
+            flux = Flux1Schnell(quantize=8)
+            image = flux.generate_image(
+                prompt=prompt,
+                seed=seed or (int(time.time()) + i),
+                num_inference_steps=steps,
                 width=width,
                 height=height,
             )
 
-            # Convert to base64 PNG
+            # Convert PIL Image to base64 PNG
             buf = io.BytesIO()
             image.save(buf, format="PNG")
             b64 = base64.b64encode(buf.getvalue()).decode()
@@ -59,8 +53,8 @@ def generate_image(
                 "revised_prompt": prompt,
             })
 
-        elapsed = time.monotonic() - start
-        logger.info("Generated %d images in %.1fs", n, elapsed)
+        elapsed_total = time.monotonic()
+        logger.info("Generated %d images", n)
 
         return {
             "created": int(time.time()),
@@ -68,11 +62,8 @@ def generate_image(
         }
 
     except ImportError:
-        logger.error("MLX stable-diffusion not available. Install mlx SD examples.")
         return {
-            "error": "Image generation requires MLX stable-diffusion. "
-                     "Clone mlx-examples and install stable_diffusion module.",
-            "hint": "git clone https://github.com/ml-explore/mlx-examples && cd mlx-examples/stable_diffusion && pip install .",
+            "error": "Image generation requires mflux. Install with: pip install 'docker-mlx-cpp[image]'",
         }
     except Exception as e:
         logger.error("Image generation failed: %s", e)

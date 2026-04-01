@@ -159,36 +159,62 @@ async def list_models(request: Request):
 
 @app.api_route("/v1/chat/completions", methods=["POST"])
 async def chat_completions(request: Request):
-    """Chat completions → MLX Daemon."""
+    """Chat completions → MLX Daemon. Supports SSE streaming."""
     client_ip = request.client.host if request.client else "unknown"
     if not _check_rate_limit(client_ip):
         return JSONResponse(status_code=429, content={"error": "Rate limit exceeded"})
 
     body = await request.body()
+
+    # Detect streaming request
+    import json as _json
+    try:
+        body_json = _json.loads(body) if body else {}
+    except _json.JSONDecodeError:
+        body_json = {}
+    is_streaming = body_json.get("stream", False)
+
     start = time.monotonic()
 
     try:
-        resp = await request.app.state.mlx_client.request(
-            method="POST",
-            url="/v1/chat/completions",
-            content=body,
-            headers={"content-type": "application/json"},
-        )
+        if is_streaming:
+            # SSE streaming: proxy chunks in real-time (not buffered)
+            req = request.app.state.mlx_client.build_request(
+                method="POST",
+                url="/v1/chat/completions",
+                content=body,
+                headers={"content-type": "application/json"},
+            )
+            resp = await request.app.state.mlx_client.send(req, stream=True)
 
-        elapsed_ms = (time.monotonic() - start) * 1000
-        _metrics["requests_total"] += 1
-        _metrics["requests_by_engine"]["mlx"] += 1
-        _metrics["latency_sum_ms"] += elapsed_ms
-        logger.info("POST /v1/chat/completions → MLX %d (%.0fms) [%s]", resp.status_code, elapsed_ms, client_ip)
+            async def sse_proxy():
+                try:
+                    async for chunk in resp.aiter_bytes():
+                        yield chunk
+                finally:
+                    await resp.aclose()
 
-        # Check if streaming
-        if resp.headers.get("content-type", "").startswith("text/event-stream"):
-            return StreamingResponse(iter([resp.content]), media_type="text/event-stream")
+            _metrics["requests_total"] += 1
+            _metrics["requests_by_engine"]["mlx"] += 1
+            logger.info("POST /v1/chat/completions → MLX STREAM [%s]", client_ip)
+            return StreamingResponse(sse_proxy(), media_type="text/event-stream")
+        else:
+            # Non-streaming: standard proxy
+            resp = await request.app.state.mlx_client.request(
+                method="POST",
+                url="/v1/chat/completions",
+                content=body,
+                headers={"content-type": "application/json"},
+            )
 
-        return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
+            elapsed_ms = (time.monotonic() - start) * 1000
+            _metrics["requests_total"] += 1
+            _metrics["requests_by_engine"]["mlx"] += 1
+            _metrics["latency_sum_ms"] += elapsed_ms
+            logger.info("POST /v1/chat/completions → MLX %d (%.0fms) [%s]", resp.status_code, elapsed_ms, client_ip)
+            return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
 
     except httpx.ConnectError:
-        # Fallback to DMR
         logger.warning("MLX Daemon unreachable, falling back to DMR")
         return await _proxy(request.app.state.dmr_client, "POST", "/engines/v1/chat/completions", body, "application/json", "dmr")
 
@@ -232,6 +258,35 @@ async def proxy_training(path: str, request: Request):
 async def proxy_models(path: str, request: Request):
     body = await request.body()
     return await _proxy(request.app.state.mlx_client, request.method, f"/models/{path}", body, "application/json", "mlx")
+
+
+# ── Compute Routes → MLX Daemon (direct Metal GPU) ──────────────────────────
+
+@app.api_route("/compute/{path:path}", methods=["GET", "POST"])
+async def proxy_compute(path: str, request: Request):
+    body = await request.body()
+    return await _proxy(request.app.state.mlx_client, request.method, f"/compute/{path}", body, "application/json", "mlx")
+
+
+# ── File Upload Routes → MLX Daemon ─────────────────────────────────────────
+
+@app.api_route("/files/{path:path}", methods=["GET", "POST", "DELETE"])
+async def proxy_files(path: str, request: Request):
+    body = await request.body()
+    ct = request.headers.get("content-type", "application/json")
+    return await _proxy(request.app.state.mlx_client, request.method, f"/files/{path}", body, ct, "mlx")
+
+
+# ── GPU + Engine Status → MLX Daemon ────────────────────────────────────────
+
+@app.get("/gpu")
+async def gpu_info(request: Request):
+    return await _proxy(request.app.state.mlx_client, "GET", "/gpu", b"", "application/json", "mlx")
+
+
+@app.get("/engines")
+async def engine_status(request: Request):
+    return await _proxy(request.app.state.mlx_client, "GET", "/engines", b"", "application/json", "mlx")
 
 
 # ── DMR Direct Routes (fallback / compatibility) ────────────────────────────

@@ -67,13 +67,13 @@ presets:
 
   # ── Audio ──────────────────────────────────────────────────────────────────
   audio-stt:
-    model: mlx-community/whisper-large-v3-turbo
+    model: mlx-community/whisper-large-v3-turbo-asr-fp16
     description: "Speech-to-text (Whisper)"
     min_memory_gb: 8
 
   audio-tts:
-    model: mlx-community/tts-default
-    description: "Text-to-speech"
+    model: mlx-community/Kokoro-82M-bf16
+    description: "Text-to-speech (Kokoro)"
     min_memory_gb: 8
 
   # ── Embeddings ─────────────────────────────────────────────────────────────
