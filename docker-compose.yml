@@ -13,6 +13,7 @@
 #   docker compose --profile examples up           # Run example app
 #   docker compose --profile test up curl-test     # Quick curl test
 #   docker compose --profile train up trainer      # LoRA training example
+#   docker compose --profile gpu-test up gpu-test  # Test ALL 100+ GPU ops
 
 services:
   # ============================================================
@@ -84,6 +85,25 @@ services:
       - mlx-net
     profiles:
       - train
+
+  # ============================================================
+  # GPU Test: validates ALL 100+ Metal GPU operations
+  # Proves any container can access the full MLX compute stack
+  # ============================================================
+  gpu-test:
+    build:
+      context: ./examples/gpu-test
+      dockerfile: Dockerfile
+    container_name: mlx-gpu-test
+    environment:
+      - MLX_URL=http://mlx-gateway:8080
+    depends_on:
+      mlx-gateway:
+        condition: service_healthy
+    networks:
+      - mlx-net
+    profiles:
+      - gpu-test
 
   # ============================================================
   # Test: curl container for ad-hoc testing

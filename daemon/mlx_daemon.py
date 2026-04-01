@@ -264,6 +264,13 @@ async def compute_devices():
     return get_device_info()
 
 
+@app.get("/compute/ops")
+async def compute_ops():
+    """List all 100+ supported GPU operations by category."""
+    from daemon.engines.compute import list_operations
+    return list_operations()
+
+
 @app.post("/compute/eval")
 async def compute_eval(request: Request):
     """Execute an MLX GPU operation (matmul, softmax, sort, etc.)."""
