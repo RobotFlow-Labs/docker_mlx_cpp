@@ -3,47 +3,55 @@
 ## Last Updated: 2026-04-01
 
 ## Vision
-The go-to tool for all Mac M-series users who need GPU acceleration from Docker containers. The "NVIDIA Container Toolkit" equivalent for Apple Silicon — not just for LLMs, but for any GPU workload: simulators, ML training, rendering, anything that currently falls back to CPU in Docker.
+The NVIDIA Container Toolkit for Mac. Any Docker container gets Metal GPU access — inference, training, image gen, audio, embeddings. First-mover on Apple Silicon GPU containers.
 
-## Status
-MVP foundation built. Gateway + compose stack + examples ready for testing.
+## Status: Sprint 1 Complete
+Full daemon + gateway + CLI + all engines built. Ready for testing.
 
 ## Accomplished This Session
-- Initialized git repo, added remote (github.com/RobotFlow-Labs/docker_mlx_cpp)
-- Created CLAUDE.md with project instructions
-- Set up .claude/ config (settings.json with push-to-main enabled, rules)
-- Built LLM Gateway (FastAPI reverse proxy to Docker Model Runner)
-  - OpenAI API passthrough (/v1/*)
-  - Anthropic API passthrough (/anthropic/v1/*)
-  - Health checks, rate limiting, request logging
-- Created docker-compose.yml with gateway + example services
-- Created Python client example (OpenAI SDK → gateway → Metal GPU)
-- Created curl test scripts and benchmark script
-- Created setup.sh for first-time setup
-- Created README.md with architecture diagram and comparison table
+- [x] Initialized git repo → github.com/RobotFlow-Labs/docker_mlx_cpp
+- [x] Project structure: daemon/, gateway/, cli/, sdk/, models/, tests/
+- [x] pyproject.toml with all dependencies and CLI entry point
+- [x] MLX Daemon (daemon/mlx_daemon.py) — FastAPI on port 12435
+  - Inference engine (mlx-lm, 50+ architectures, streaming)
+  - Training engine (LoRA, QLoRA, DPO, async job queue)
+  - Image generation engine (Stable Diffusion, FLUX)
+  - Audio engine (Whisper STT, TTS)
+  - Embeddings engine (mlx-embeddings, Jina v5)
+  - Model manager (HuggingFace pull, cache, presets)
+- [x] Gateway (gateway/server.py) — dual upstream routing
+  - MLX Daemon (primary) + Docker Model Runner (fallback)
+  - Rate limiting, metrics, CORS, health aggregation
+- [x] CLI tool (cli/mlx_cpp.py) — serve, run, models, health, gpu, benchmark, train
+- [x] Model presets (models/presets.yaml) — 14 curated presets
+- [x] Docker compose with gateway, examples, training profiles
+- [x] launchd plist for macOS auto-start
+- [x] Updated setup script with full verification
+- [x] README with architecture diagram and full API docs
 
-## TODO — Phase 1: Validate MVP
-- [ ] Run setup.sh to verify DMR is working
-- [ ] `docker compose up -d` and test gateway health
-- [ ] Run curl-test.sh end-to-end
-- [ ] Run python-client example
-- [ ] Run benchmark.sh baseline numbers
+## TODO — Sprint 2: Test & Validate
+- [ ] pip install -e ".[all]" and verify imports
+- [ ] mlx-cpp serve → test daemon starts
+- [ ] docker compose up -d → test gateway connects
+- [ ] End-to-end: container → gateway → daemon → Metal GPU → response
+- [ ] Benchmark: compare with llama.cpp baseline
+- [ ] Test training job submission and tracking
+- [ ] Test model pull and caching
 
-## TODO — Phase 2: Beyond LLMs (GPU for everything)
-- [ ] Add Metal compute proxy for non-LLM GPU workloads (image generation, simulation)
-- [ ] Create `mlx-compute` container for general Metal shader dispatch
-- [ ] Explore virtio-gpu bridge for direct Metal access in containers
-- [ ] Add support for MLX training workloads (not just inference)
-- [ ] Create Homebrew formula for easy install
+## TODO — Sprint 3: Polish
+- [ ] Python SDK (sdk/python/docker_mlx/)
+- [ ] Homebrew formula
+- [ ] Integration test suite
+- [ ] Documentation site
+- [ ] Demo GIF recording
 
-## TODO — Phase 3: Go-to-Market
-- [ ] Create landing page (robotflowlabs.com/docker-mlx)
-- [ ] Write blog post: "NVIDIA containers, but for Mac"
-- [ ] Create demo video showing container → Metal GPU inference
-- [ ] Submit to Hacker News, Reddit r/MachineLearning, r/docker
-- [ ] Docker Hub marketplace listing
+## TODO — Sprint 4: Launch
+- [ ] PyPI publish
+- [ ] Hacker News "Show HN"
+- [ ] Blog post
+- [ ] ProductHunt
 
 ## Blockers
-- None currently
+- None
 
-## MVP Readiness: 25%
+## MVP Readiness: 50%

@@ -2,81 +2,106 @@
 
 **The NVIDIA Container Toolkit — for Mac.**
 
-Give **any Docker container** access to your Apple Silicon GPU. No CUDA. No passthrough hacks. Just Metal.
+Give **any Docker container** full access to your Apple Silicon GPU. Not just inference — training, image generation, audio, embeddings, everything. No CUDA needed. Just Metal.
 
 ```
-┌─────────────────────────────────────────────────┐
-│  Your Container (Linux)                         │
-│  ┌───────────────────────────────────────────┐  │
-│  │  app → http://llm-gateway:8080/v1/...    │  │
-│  └──────────────────┬────────────────────────┘  │
-│                     │                            │
-│  ┌──────────────────▼────────────────────────┐  │
-│  │  mlx-gateway (proxy, logs, rate limits)   │  │
-│  └──────────────────┬────────────────────────┘  │
-└─────────────────────┼───────────────────────────┘
-                      │ model-runner.docker.internal
-┌─────────────────────▼───────────────────────────┐
-│  macOS Host                                      │
-│  ┌───────────────────────────────────────────┐  │
-│  │  Docker Model Runner                      │  │
-│  │  ├── llama.cpp (GGUF) ──► Metal GPU      │  │
-│  │  └── vllm-metal (MLX) ──► Metal GPU      │  │
-│  └───────────────────────────────────────────┘  │
-│  Apple Silicon M1/M2/M3/M4 — Metal API          │
-└──────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  ANY Docker Container                                 │
+│  (Python, Node, Rust, Go, curl — anything)           │
+│  Uses: OpenAI SDK, docker_mlx SDK, or raw HTTP       │
+└────────────────────────┬─────────────────────────────┘
+                         │ HTTP :8080
+┌────────────────────────▼─────────────────────────────┐
+│  mlx-gateway (container)                              │
+│  ├── /v1/*           → inference (LLM, VLM)          │
+│  ├── /v1/embeddings  → embedding generation          │
+│  ├── /v1/audio/*     → Whisper STT + TTS             │
+│  ├── /v1/images/*    → Stable Diffusion / FLUX       │
+│  ├── /train/*        → LoRA / QLoRA fine-tuning      │
+│  └── /models/*       → model management              │
+└────────────────────────┬─────────────────────────────┘
+                         │ host.docker.internal:12435
+┌────────────────────────▼─────────────────────────────┐
+│  MLX Daemon (host-side, native macOS)                 │
+│  ├── Inference:   mlx-lm (50+ architectures)         │
+│  ├── Vision:      mlx-vlm (images + video)           │
+│  ├── Training:    LoRA, QLoRA, DPO                   │
+│  ├── Image Gen:   Stable Diffusion, SDXL, FLUX       │
+│  ├── Audio:       Whisper STT + TTS                  │
+│  ├── Embeddings:  Jina v5, BGE, mlx-embeddings       │
+│  └── Models:      pull, cache, convert, presets      │
+└────────────────────────┬─────────────────────────────┘
+                         │ Metal API
+┌────────────────────────▼─────────────────────────────┐
+│  Apple Silicon M1/M2/M3/M4/M5 — Metal GPU           │
+│  Unified Memory • 20-30% faster than llama.cpp       │
+└──────────────────────────────────────────────────────┘
 ```
 
 ## Why
 
-On Linux, `nvidia-docker` gives containers GPU access with `--gpus all`. On Mac, there's nothing equivalent — Metal GPU can't be passed into Docker's Linux VM.
+On Linux, `nvidia-docker` gives containers `--gpus all` and full CUDA access. On Mac, **nothing equivalent exists** — Metal GPU can't be passed into Docker's Linux VM.
 
-**docker_mlx_cpp** solves this by running GPU inference on the host via Docker Model Runner and exposing it to all containers through a standard API gateway. Your containers speak OpenAI API, your Mac does the Metal compute.
+**docker_mlx_cpp** solves this by running a host-side MLX daemon that exposes the full Apple Silicon GPU stack to any container through standard APIs. Your containers speak OpenAI API. Your Mac does the Metal compute.
+
+| Capability | NVIDIA Container Toolkit | docker_mlx_cpp |
+|-----------|-------------------------|----------------|
+| GPU from containers | `--gpus all` (CUDA) | `http://mlx-gateway:8080` (Metal) |
+| LLM inference | vLLM, TGI, Triton | mlx-lm (50+ architectures) |
+| Training | PyTorch + NCCL | LoRA, QLoRA, DPO via MLX |
+| Image generation | Stable Diffusion (CUDA) | SD, SDXL, FLUX (Metal) |
+| Audio | Whisper (CUDA) | Whisper + TTS (Metal) |
+| Embeddings | sentence-transformers | mlx-embeddings, Jina v5 |
+| Model format | Framework-specific | MLX Safetensors (HuggingFace) |
+| Setup | nvidia-container-toolkit | `pip install docker-mlx-cpp` |
 
 ## Quick Start
 
 ```bash
-# 1. Prerequisites: Docker Desktop 4.62+ with Model Runner enabled
-#    Settings → AI → Enable Docker Model Runner
+# 1. Install
+pip install -e ".[all]"
 
-# 2. Setup — pull a model and verify
-./scripts/setup.sh
+# 2. Start the MLX Daemon (host-side GPU service)
+mlx-cpp serve
 
-# 3. Start the gateway
-docker compose up -d
+# 3. Start the gateway (in Docker)
+docker compose up -d mlx-gateway
 
-# 4. Test from any container
-docker compose run --rm curl-test \
-  curl -s http://llm-gateway:8080/v1/chat/completions \
+# 4. Pull a model
+mlx-cpp models pull mlx-community/SmolLM2-360M-Instruct-4bit
+
+# 5. Use from ANY container
+docker run --rm --network mlx-network curlimages/curl:8.5.0 \
+  curl -s http://mlx-gateway:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"model":"ai/smollm2:360M-Q4_K_M","messages":[{"role":"user","content":"hello from docker"}]}'
-
-# 5. Run the Python example
-docker compose --profile examples up example-app
+  -d '{"model":"mlx-community/SmolLM2-360M-Instruct-4bit","messages":[{"role":"user","content":"Hello from Docker!"}]}'
 ```
 
-## What You Get
+## CLI
 
-| Feature | NVIDIA Container Toolkit | docker_mlx_cpp |
-|---------|------------------------|----------------|
-| GPU from containers | `--gpus all` | `http://llm-gateway:8080` |
-| Hardware | CUDA GPUs | Apple Silicon Metal |
-| API | Custom per framework | OpenAI-compatible (standard) |
-| Model format | Framework-specific | GGUF (llama.cpp) / MLX (vllm-metal) |
-| Setup | nvidia-docker runtime | Docker Desktop Model Runner |
-| Container changes | None (direct GPU) | Set `OPENAI_BASE_URL` env var |
+```bash
+mlx-cpp serve                    # Start GPU daemon
+mlx-cpp run <model> "prompt"     # Quick inference
+mlx-cpp models list              # Show cached models
+mlx-cpp models pull <model>      # Pull from HuggingFace
+mlx-cpp health                   # Check daemon + GPU status
+mlx-cpp gpu                      # Show GPU info
+mlx-cpp benchmark <model>        # Performance benchmark
+mlx-cpp train lora --model ...   # LoRA fine-tuning
+```
 
-## API Endpoints
+## Model Presets
 
-The gateway proxies all Docker Model Runner APIs:
+Use human-readable presets instead of full model IDs:
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /health` | Gateway + DMR health check |
-| `GET /v1/models` | List available models |
-| `POST /v1/chat/completions` | Chat inference (OpenAI format) |
-| `POST /v1/embeddings` | Embeddings |
-| `POST /anthropic/v1/messages` | Anthropic-compatible API |
+```bash
+mlx-cpp run chat-small "hello"       # SmolLM2-360M (8GB Mac)
+mlx-cpp run chat-default "hello"     # Llama-3.2-3B (8GB+)
+mlx-cpp run code "write a function"  # Qwen2.5-Coder-7B (16GB+)
+mlx-cpp run vision "describe image"  # Qwen2-VL-7B (16GB+)
+```
+
+See all presets: [`models/presets.yaml`](models/presets.yaml)
 
 ## Use in Your docker-compose.yml
 
@@ -85,9 +110,9 @@ services:
   your-app:
     image: your-app
     environment:
-      - OPENAI_BASE_URL=http://llm-gateway:8080/v1
+      - OPENAI_BASE_URL=http://mlx-gateway:8080/v1
       - OPENAI_API_KEY=not-needed
-      - OPENAI_MODEL=ai/smollm2:360M-Q4_K_M
+      - OPENAI_MODEL=mlx-community/Llama-3.2-3B-Instruct-4bit
     networks:
       - mlx-network
 
@@ -96,50 +121,98 @@ networks:
     external: true
 ```
 
-## Supported Models
+Zero code changes needed — any app using the OpenAI SDK works out of the box.
 
-Any model Docker Model Runner supports:
+## API Endpoints
 
-```bash
-docker model pull ai/smollm2:360M-Q4_K_M       # Small, fast
-docker model pull ai/mistral:7B-Q4_K_M          # General purpose
-docker model pull ai/llama3.2:3B-Q4_K_M         # Meta Llama
-docker model pull ai/gemma3:4B-Q4_K_M           # Google Gemma
-```
+### Inference (OpenAI-compatible)
+| Endpoint | Description |
+|----------|-------------|
+| `POST /v1/chat/completions` | Chat inference (LLM/VLM) |
+| `POST /v1/completions` | Text completions |
+| `POST /v1/embeddings` | Text embeddings |
+| `GET /v1/models` | List available models |
 
-MLX models route automatically to vllm-metal when installed:
-```bash
-docker model install-runner --backend vllm
-```
+### Audio (OpenAI-compatible)
+| Endpoint | Description |
+|----------|-------------|
+| `POST /v1/audio/transcriptions` | Whisper speech-to-text |
+| `POST /v1/audio/speech` | Text-to-speech |
 
-## Benchmarking
+### Image Generation (OpenAI-compatible)
+| Endpoint | Description |
+|----------|-------------|
+| `POST /v1/images/generations` | Stable Diffusion / FLUX |
 
-```bash
-./scripts/benchmark.sh                    # Default: 5 runs
-RUNS=20 MODEL=ai/mistral:7B-Q4_K_M ./scripts/benchmark.sh
-```
+### Training (custom)
+| Endpoint | Description |
+|----------|-------------|
+| `POST /train/lora` | Start LoRA/QLoRA fine-tuning |
+| `GET /train/jobs` | List training jobs |
+| `GET /train/jobs/{id}` | Get job status |
+
+### Management
+| Endpoint | Description |
+|----------|-------------|
+| `POST /models/pull` | Pull model from HuggingFace |
+| `POST /models/delete` | Remove cached model |
+| `GET /health` | Gateway + daemon + GPU status |
+| `GET /metrics` | Prometheus metrics |
 
 ## Project Structure
 
 ```
 docker_mlx_cpp/
-├── CLAUDE.md                 # Project instructions for Claude Code
-├── docker-compose.yml        # Main stack definition
-├── gateway/
-│   ├── Dockerfile            # Gateway container
-│   ├── server.py             # FastAPI reverse proxy to DMR
-│   └── requirements.txt      # Python deps
+├── daemon/                      # Host-side MLX daemon
+│   ├── mlx_daemon.py           # FastAPI main app (port 12435)
+│   ├── model_manager.py        # Model pull/cache/convert
+│   ├── engines/
+│   │   ├── inference.py        # LLM/VLM inference (mlx-lm)
+│   │   ├── training.py         # LoRA/QLoRA fine-tuning
+│   │   ├── embeddings.py       # Text embeddings
+│   │   ├── audio.py            # Whisper STT + TTS
+│   │   └── image_gen.py        # Stable Diffusion / FLUX
+│   └── com.robotflow.mlx-daemon.plist  # macOS auto-start
+├── gateway/                     # Docker container gateway
+│   ├── Dockerfile
+│   ├── server.py               # Unified reverse proxy
+│   └── requirements.txt
+├── cli/
+│   └── mlx_cpp.py              # CLI tool (mlx-cpp)
+├── models/
+│   └── presets.yaml             # Curated model presets
 ├── examples/
-│   ├── python-client/        # Python OpenAI SDK example
-│   │   ├── Dockerfile
-│   │   └── app.py
-│   └── curl-test.sh          # Quick curl smoke test
+│   ├── python-client/           # Python OpenAI SDK example
+│   └── curl-test.sh            # Quick smoke test
 ├── scripts/
-│   ├── setup.sh              # First-time setup + model pull
-│   └── benchmark.sh          # Inference latency benchmark
-├── models/                   # Model configs and presets
-└── tests/                    # Integration tests
+│   ├── setup.sh                # First-time setup
+│   └── benchmark.sh            # Performance benchmark
+├── sdk/                         # Client SDKs (coming)
+│   └── python/docker_mlx/
+├── tests/
+├── docker-compose.yml
+├── pyproject.toml
+└── README.md
 ```
+
+## How It Works
+
+Metal GPU **cannot** be passed into Docker containers on macOS (confirmed by Docker, Apple, and Red Hat). The VM boundary blocks it.
+
+docker_mlx_cpp uses the same pattern as NVIDIA's container toolkit, adapted for Mac:
+
+1. **MLX Daemon** runs natively on macOS with direct Metal GPU access
+2. **Gateway container** routes HTTP requests from Docker network to the daemon
+3. **Any container** calls the gateway using standard OpenAI API — no special runtime needed
+
+MLX is 20-30% faster than llama.cpp on Apple Silicon and supports the full ML stack: inference, training, image generation, audio, embeddings, and custom Metal kernels.
+
+## Requirements
+
+- **macOS** on Apple Silicon (M1/M2/M3/M4/M5)
+- **Docker Desktop** 4.62+
+- **Python** 3.11+
+- **MLX** (installed automatically with `pip install docker-mlx-cpp[all]`)
 
 ## License
 
@@ -147,4 +220,4 @@ MIT
 
 ---
 
-**Built by [RobotFlow Labs](https://robotflowlabs.com) — Making Mac GPUs work like NVIDIA for Docker.**
+**Built by [RobotFlow Labs](https://github.com/RobotFlow-Labs) — Making Mac GPUs work like NVIDIA for Docker.**

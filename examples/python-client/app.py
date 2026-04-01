@@ -2,12 +2,12 @@
 Example: Python app using Mac GPU inference from inside a Docker container.
 
 This demonstrates the "NVIDIA alternative" pattern for macOS:
-    Container → llm-gateway → Docker Model Runner → Apple Silicon Metal GPU
+    Container → mlx-gateway → MLX Daemon → Apple Silicon Metal GPU
 
 Environment variables (injected by docker-compose.yml):
-    OPENAI_BASE_URL  — gateway URL (http://llm-gateway:8080/v1)
-    OPENAI_API_KEY   — not needed by DMR, set to "not-needed"
-    OPENAI_MODEL     — model to use (e.g., ai/smollm2:360M-Q4_K_M)
+    OPENAI_BASE_URL  — gateway URL (http://mlx-gateway:8080/v1)
+    OPENAI_API_KEY   — not needed, set to "not-needed"
+    OPENAI_MODEL     — model to use (MLX community or preset name)
 """
 
 import os
@@ -15,11 +15,11 @@ import os
 from openai import OpenAI
 
 client = OpenAI(
-    base_url=os.environ.get("OPENAI_BASE_URL", "http://llm-gateway:8080/v1"),
+    base_url=os.environ.get("OPENAI_BASE_URL", "http://mlx-gateway:8080/v1"),
     api_key=os.environ.get("OPENAI_API_KEY", "not-needed"),
 )
 
-model = os.environ.get("OPENAI_MODEL", "ai/smollm2:360M-Q4_K_M")
+model = os.environ.get("OPENAI_MODEL", "mlx-community/SmolLM2-360M-Instruct-4bit")
 
 
 def main():

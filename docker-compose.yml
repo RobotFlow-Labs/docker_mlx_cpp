@@ -1,20 +1,25 @@
-# Docker MLX C++ — Mac GPU Model Runner Platform
-# "NVIDIA containers" alternative for Apple Silicon
+# docker_mlx_cpp — The NVIDIA Container Toolkit for Mac
 #
 # Architecture:
-#   Host (Metal GPU) → Docker Model Runner → model-runner.docker.internal → containers
+#   Container → mlx-gateway:8080 → MLX Daemon (host:12435) → Metal GPU
+#                                → DMR (fallback for GGUF/llama.cpp)
+#
+# Prerequisites:
+#   1. MLX Daemon running on host: mlx-cpp serve
+#   2. Docker Desktop 4.62+ with Model Runner enabled (optional, for DMR fallback)
 #
 # Usage:
-#   docker compose up -d          # Start all services
-#   docker compose logs -f        # Watch logs
-#   docker compose down           # Stop everything
+#   docker compose up -d                          # Start gateway
+#   docker compose --profile examples up           # Run example app
+#   docker compose --profile test up curl-test     # Quick curl test
+#   docker compose --profile train up trainer      # LoRA training example
 
 services:
   # ============================================================
-  # LLM Gateway — centralized proxy to Docker Model Runner
-  # Provides: stable DNS, logging, rate limiting, health checks
+  # MLX Gateway — unified proxy to Metal GPU compute
+  # Routes: inference, training, image gen, audio, embeddings
   # ============================================================
-  llm-gateway:
+  mlx-gateway:
     build:
       context: ./gateway
       dockerfile: Dockerfile
@@ -22,10 +27,11 @@ services:
     ports:
       - "8080:8080"
     environment:
+      - MLX_DAEMON_URL=http://host.docker.internal:12435
       - DMR_UPSTREAM=http://model-runner.docker.internal
       - GATEWAY_PORT=8080
       - LOG_LEVEL=info
-      - RATE_LIMIT_RPM=60
+      - RATE_LIMIT_RPM=120
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
       interval: 10s
@@ -36,7 +42,7 @@ services:
       - mlx-net
 
   # ============================================================
-  # Example: Python app consuming GPU inference via the gateway
+  # Example: Python app using GPU inference via OpenAI SDK
   # ============================================================
   example-app:
     build:
@@ -44,11 +50,11 @@ services:
       dockerfile: Dockerfile
     container_name: mlx-example-app
     environment:
-      - OPENAI_BASE_URL=http://llm-gateway:8080/v1
+      - OPENAI_BASE_URL=http://mlx-gateway:8080/v1
       - OPENAI_API_KEY=not-needed
-      - OPENAI_MODEL=ai/smollm2:360M-Q4_K_M
+      - OPENAI_MODEL=mlx-community/SmolLM2-360M-Instruct-4bit
     depends_on:
-      llm-gateway:
+      mlx-gateway:
         condition: service_healthy
     networks:
       - mlx-net
@@ -56,7 +62,31 @@ services:
       - examples
 
   # ============================================================
-  # Example: Generic curl test container
+  # Example: LoRA training from a container
+  # ============================================================
+  trainer:
+    image: python:3.12-slim
+    container_name: mlx-trainer
+    environment:
+      - MLX_URL=http://mlx-gateway:8080
+    command: >
+      python3 -c "
+      import httpx, json, time
+      url = 'http://mlx-gateway:8080/train/lora'
+      data = {'model': 'mlx-community/SmolLM2-360M-Instruct-4bit', 'dataset': '/data/train.jsonl', 'epochs': 1}
+      resp = httpx.post(url, json=data)
+      print('Training started:', resp.json())
+      "
+    depends_on:
+      mlx-gateway:
+        condition: service_healthy
+    networks:
+      - mlx-net
+    profiles:
+      - train
+
+  # ============================================================
+  # Test: curl container for ad-hoc testing
   # ============================================================
   curl-test:
     image: curlimages/curl:8.5.0

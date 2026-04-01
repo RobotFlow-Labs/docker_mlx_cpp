@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.robotflow.mlx-daemon</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/env</string>
+        <string>python3</string>
+        <string>-m</string>
+        <string>daemon.mlx_daemon</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/usr/local/lib/docker-mlx-cpp</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/mlx-daemon.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/mlx-daemon.stderr.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>MLX_DAEMON_PORT</key>
+        <string>12435</string>
+        <key>LOG_LEVEL</key>
+        <string>info</string>
+    </dict>
+</dict>
+</plist>
